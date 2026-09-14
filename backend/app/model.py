@@ -63,6 +63,7 @@ def predict_profile(lat: float, lon: float, observation_date: date, parameter: s
         "depths": DEPTHS.tolist(),
         "temperatures": temperatures,
         "uncertainties": uncertainties,
+        "parameter_values": {"temperature": temperatures, "salinity": [round(float(values["sss"] + 0.9 * (1 - np.exp(-depth / 180))), 2) for depth in DEPTHS], "oxygen": [round(float(245 * np.exp(-depth / 180) + 62 * (1 - np.exp(-depth / 180)) + 6 * values["v"]), 2) for depth in DEPTHS], "ph": [round(float(8.18 - 0.45 * (1 - np.exp(-depth / 180)) + 0.02 * values["u"]), 2) for depth in DEPTHS], "turbidity": [round(float(0.06 + 0.28 * (1 - np.exp(-depth / 180)) + 0.02 * abs(values["v"])), 3) for depth in DEPTHS]},
         "attention": {variable: [round(float(v), 3) for v in row] for variable, row in zip(VARIABLES, weights)},
         "model": "OceanEmbed synthetic Multi-Modal Ocean Encoder",
     }
