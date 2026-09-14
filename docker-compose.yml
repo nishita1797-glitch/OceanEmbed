@@ -1,0 +1,24 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: oceanembed
+      POSTGRES_USER: oceanembed
+      POSTGRES_PASSWORD: oceanembed
+    ports: ["5432:5432"]
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://oceanembed:oceanembed@db:5432/oceanembed
+      LLM_API_KEY: ${LLM_API_KEY:-}
+    ports: ["8000:8000"]
+    depends_on: [db]
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_API_URL: http://localhost:8000
+    ports: ["8080:80"]
+    depends_on: [backend]
+volumes:
+  postgres_data:
