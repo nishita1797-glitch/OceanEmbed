@@ -33,7 +33,7 @@ Deploy this as two Vercel projects; the `services` JSON format is not supported 
 4. In the frontend project environment variables, set `VITE_API_URL` to the deployed backend URL, for example `https://oceanembed-api.vercel.app`.
 5. Redeploy the frontend after setting the variable.
 
-The backend's `LLM_API_KEY` is optional for the current graceful fallback agent. `DATABASE_URL` can be set to an external PostgreSQL/PostGIS service when persistence is enabled.
+The backend's `LLM_API_KEY` is optional and is read server-side for OpenAI-compatible answer rewriting. The agent always retrieves numeric values from OceanEmbed first and falls back gracefully when no key is present. Set `LLM_MODEL` optionally (default: `gpt-4o-mini`). `DATABASE_URL` can be set to an external PostgreSQL/PostGIS service when persistence is enabled.
 
 ## API
 
