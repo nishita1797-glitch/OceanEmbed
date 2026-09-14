@@ -13,6 +13,29 @@ PARAMETERS = {
     "turbidity": {"label": "Turbidity / Water Clarity (Kd490)", "unit": "Kd490", "minimum": 0.02, "maximum": 0.6},
 }
 
+GRID_LATS = np.linspace(LAT_MIN, LAT_MAX, 71)
+GRID_LONS = np.linspace(LON_MIN, LON_MAX, 111)
+
+
+def _bilinear(values: np.ndarray, lat: float, lon: float) -> float:
+    """Interpolate the cached spatial grid at any valid Indian Ocean point."""
+    lat_position = np.clip((lat - LAT_MIN) / (LAT_MAX - LAT_MIN) * (len(GRID_LATS) - 1), 0, len(GRID_LATS) - 1)
+    lon_position = np.clip((lon - LON_MIN) / (LON_MAX - LON_MIN) * (len(GRID_LONS) - 1), 0, len(GRID_LONS) - 1)
+    lat_index = min(int(lat_position), len(GRID_LATS) - 2); lon_index = min(int(lon_position), len(GRID_LONS) - 2)
+    lat_fraction = lat_position - lat_index; lon_fraction = lon_position - lon_index
+    return float((values[lat_index, lon_index] * (1 - lon_fraction) + values[lat_index, lon_index + 1] * lon_fraction) * (1 - lat_fraction) + (values[lat_index + 1, lon_index] * (1 - lon_fraction) + values[lat_index + 1, lon_index + 1] * lon_fraction) * lat_fraction)
+
+
+@lru_cache(maxsize=16)
+def spatial_grid(observation_date: date) -> dict[str, np.ndarray]:
+    """Create a chunked-grid-shaped fallback dataset once per observation date."""
+    grid = {parameter: np.empty((len(GRID_LATS), len(GRID_LONS), len(DEPTHS))) for parameter in PARAMETERS}
+    for lat_index, lat in enumerate(GRID_LATS):
+        for lon_index, lon in enumerate(GRID_LONS):
+            profile = predict_profile(float(lat), float(lon), observation_date)
+            for parameter, values in profile["parameter_values"].items(): grid[parameter][lat_index, lon_index] = values
+    return grid
+
 
 def predict_profile(lat: float, lon: float, observation_date: date, parameter: str = "temperature") -> dict:
     if parameter not in PARAMETERS:
@@ -69,13 +92,22 @@ def predict_profile(lat: float, lon: float, observation_date: date, parameter: s
     }
 
 
+def lookup_profile(lat: float, lon: float, observation_date: date) -> dict:
+    """Return bilinearly interpolated values for every parameter at a point."""
+    from .data import validate_point
+    validate_point(lat, lon)
+    grid = spatial_grid(observation_date)
+    parameter_values = {parameter: [round(_bilinear(values[:, :, depth_index], lat, lon), 3) for depth_index in range(len(DEPTHS))] for parameter, values in grid.items()}
+    return {"lat": lat, "lon": lon, "date": observation_date.isoformat(), "depths": DEPTHS.tolist(), "parameter_values": parameter_values, "temperatures": parameter_values["temperature"], "uncertainties": [round(0.22 + 0.00048 * depth, 2) for depth in DEPTHS], "parameter": "temperature", "unit": PARAMETERS["temperature"]["unit"], "attention": {}}
+
+
 @lru_cache(maxsize=64)
 def heatmap(date_value: date, depth: int, parameter: str = "temperature") -> dict:
     if depth not in DEPTHS or parameter not in PARAMETERS:
         raise ValueError(f"Depth must be one of: {', '.join(map(str, DEPTHS))}")
     # Dask remains the data-loading boundary; this grid is the cached demo output.
-    lats = np.linspace(LAT_MIN, LAT_MAX, 71)
-    lons = np.linspace(LON_MIN, LON_MAX, 111)
+    lats = GRID_LATS
+    lons = GRID_LONS
     points = [predict_profile(float(lat), float(lon), date_value, parameter) for lat in lats for lon in lons]
     index = int(np.where(DEPTHS == depth)[0][0])
     return {

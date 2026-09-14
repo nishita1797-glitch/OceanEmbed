@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 from .data import DEPTHS, LAT_MAX, LAT_MIN, LON_MAX, LON_MIN
-from .model import PARAMETERS, heatmap, predict_profile
+from .model import PARAMETERS, heatmap, lookup_profile, predict_profile
 from .agent import answer_query
 
 app = FastAPI(title="OceanEmbed API", version="0.1.0")
@@ -37,7 +37,11 @@ def health():
 @app.post("/predict")
 def predict(request: PredictionRequest):
     try:
-        return predict_profile(request.lat, request.lon, request.date, request.parameter)
+        profile = lookup_profile(request.lat, request.lon, request.date)
+        profile["parameter"] = request.parameter
+        profile["unit"] = PARAMETERS[request.parameter]["unit"]
+        profile["temperatures"] = profile["parameter_values"][request.parameter]
+        return profile
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
@@ -51,7 +55,10 @@ def get_heatmap(date: date = Query(...), depth: int = Query(..., ge=0, le=1000),
 @app.get("/export")
 def export_profile(lat: float = Query(..., ge=LAT_MIN, le=LAT_MAX), lon: float = Query(..., ge=LON_MIN, le=LON_MAX), date: date = Query(...), parameter: str = Query("temperature")):
     try:
-        profile = predict_profile(lat, lon, date, parameter)
+        profile = lookup_profile(lat, lon, date)
+        profile["parameter"] = parameter
+        profile["unit"] = PARAMETERS[parameter]["unit"]
+        profile["temperatures"] = profile["parameter_values"][parameter]
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     output = io.StringIO()
