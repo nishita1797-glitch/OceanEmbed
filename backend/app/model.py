@@ -54,8 +54,9 @@ def predict_profile(lat: float, lon: float, observation_date: date) -> dict:
 def heatmap(date_value: date, depth: int) -> dict:
     if depth not in DEPTHS:
         raise ValueError(f"Depth must be one of: {', '.join(map(str, DEPTHS))}")
-    lats = np.linspace(6, 22, 25)
-    lons = np.linspace(81, 99, 29)
+    # Keep the demo field in the open-water core of the Bay, avoiding land tiles.
+    lats = np.linspace(7, 21, 22)
+    lons = np.linspace(84, 98, 23)
     points = [predict_profile(float(lat), float(lon), date_value) for lat in lats for lon in lons]
     index = int(np.where(DEPTHS == depth)[0][0])
     return {
