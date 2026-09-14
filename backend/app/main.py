@@ -5,11 +5,20 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 from .data import DEPTHS, LAT_MAX, LAT_MIN, LON_MAX, LON_MIN
 from .model import heatmap, predict_profile
 from .agent import answer_query
 
 app = FastAPI(title="OceanEmbed API", version="0.1.0")
+
+class StripVercelApiPrefixMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.scope["path"].startswith("/api/"):
+            request.scope["path"] = request.scope["path"][4:]
+        return await call_next(request)
+
+app.add_middleware(StripVercelApiPrefixMiddleware)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 class PredictionRequest(BaseModel):
