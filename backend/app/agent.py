@@ -3,7 +3,12 @@ import re
 from datetime import date
 from .model import predict_profile, heatmap
 
-CITIES = {"chennai": (13.08, 80.27), "kolkata": (22.57, 88.36), "visakhapatnam": (17.69, 83.22), "chittagong": (22.36, 91.78), "port blair": (11.62, 92.73)}
+CITIES = {
+    "mumbai": (19.08, 72.88), "chennai": (13.08, 80.27), "kolkata": (22.57, 88.36),
+    "colombo": (6.93, 79.86), "male": (4.18, 73.51), "mombasa": (-4.05, 39.67),
+    "muscat": (23.59, 58.41), "jakarta": (-6.21, 106.85), "perth": (-31.95, 115.86),
+    "visakhapatnam": (17.69, 83.22), "chittagong": (22.36, 91.78), "port blair": (11.62, 92.73),
+}
 
 
 def answer_query(message: str) -> dict:
@@ -11,7 +16,7 @@ def answer_query(message: str) -> dict:
     depth_match = re.search(r"(\d{1,4})\s*m", text)
     depth = int(depth_match.group(1)) if depth_match else 200
     depth = min((0, 25, 50, 75, 100, 150, 200, 300, 400, 500, 600, 700, 800, 900, 1000), key=lambda item: abs(item - depth))
-    point = next((coords for city, coords in CITIES.items() if city in text), (15.0, 88.0))
+    point = next((coords for city, coords in CITIES.items() if city in text), (0.0, 80.0))
     if "warmest" in text or "where" in text:
         grid = heatmap(date.today(), depth)
         warmest = max(grid["points"], key=lambda item: item["temperature"])

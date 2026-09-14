@@ -1,8 +1,8 @@
 # OceanEmbed
 
-OceanEmbed is a hackathon MVP for SIH26066, Ministry of Earth Sciences, India. It predicts a 15-level subsurface ocean temperature profile from surface satellite variables across the Bay of Bengal.
+OceanEmbed is a hackathon MVP for SIH26066, Ministry of Earth Sciences, India. It predicts a 15-level subsurface ocean temperature profile from surface satellite variables across the full Indian Ocean basin.
 
-The first demo runs on deterministic synthetic observations so it is immediately usable without credentials or large datasets. The modular data layer is shaped for Xarray + Dask processing of Copernicus Marine NetCDF/Zarr products, while the compose stack includes PostGIS for the next persistence step.
+The first demo runs on deterministic synthetic observations so it is immediately usable without credentials or large datasets. The modular data layer is shaped for Xarray + Dask processing of Copernicus Marine NetCDF/Zarr products, while the compose stack includes PostGIS for the next persistence step. Heatmap date/depth results are cached in a bounded in-process cache.
 
 ## Stack
 
@@ -31,7 +31,7 @@ For fast backend-only iteration: `cd backend && pip install -r requirements.txt 
 - `POST /agent` with `{ "message": "What's the temperature at 200m near Chennai today?" }` queries the real prediction/heatmap functions and summarizes their output.
 - `GET /health` reports service status.
 
-Coordinates are validated against the MVP region: 5-23°N, 80-100°E. Supported depth levels are 0, 25, 50, 75, 100, 150, 200, 300, 400, 500, 600, 700, 800, 900, and 1000m.
+Coordinates are validated against the MVP region: 40°S-30°N, 20-130°E. Supported depth levels are 0, 25, 50, 75, 100, 150, 200, 300, 400, 500, 600, 700, 800, 900, and 1000m.
 
 ## Model and data roadmap
 

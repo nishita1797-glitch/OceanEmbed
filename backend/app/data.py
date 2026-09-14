@@ -9,8 +9,10 @@ from datetime import date
 import numpy as np
 import xarray as xr
 
-LAT_MIN, LAT_MAX = 5.0, 23.0
-LON_MIN, LON_MAX = 80.0, 100.0
+# Indian Ocean basin MVP extent: East Africa to Indonesia, Arabian Sea to
+# the southern basin. The data provider can later narrow products internally.
+LAT_MIN, LAT_MAX = -40.0, 30.0
+LON_MIN, LON_MAX = 20.0, 130.0
 DEPTHS = np.array([0, 25, 50, 75, 100, 150, 200, 300, 400, 500, 600, 700, 800, 900, 1000])
 
 
@@ -22,7 +24,7 @@ class SurfaceWindow:
 
 def validate_point(lat: float, lon: float) -> None:
     if not LAT_MIN <= lat <= LAT_MAX or not LON_MIN <= lon <= LON_MAX:
-        raise ValueError(f"Point must be inside the Bay of Bengal box ({LAT_MIN}-{LAT_MAX}N, {LON_MIN}-{LON_MAX}E)")
+        raise ValueError(f"Point must be inside the Indian Ocean basin ({LAT_MIN}-{LAT_MAX} latitude, {LON_MIN}-{LON_MAX} longitude)")
 
 
 def synthetic_surface_window(lat: float, lon: float, observation_date: date) -> SurfaceWindow:

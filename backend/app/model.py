@@ -1,7 +1,8 @@
 """Demo Multi-Modal Ocean Encoder inference implementation."""
 from datetime import date
+from functools import lru_cache
 import numpy as np
-from .data import DEPTHS, synthetic_surface_window
+from .data import DEPTHS, LAT_MAX, LAT_MIN, LON_MAX, LON_MIN, synthetic_surface_window
 
 VARIABLES = ("SST", "SSS", "SSH/SLA", "Current U/V")
 
@@ -51,18 +52,19 @@ def predict_profile(lat: float, lon: float, observation_date: date) -> dict:
     }
 
 
+@lru_cache(maxsize=64)
 def heatmap(date_value: date, depth: int) -> dict:
     if depth not in DEPTHS:
         raise ValueError(f"Depth must be one of: {', '.join(map(str, DEPTHS))}")
-    # Keep the demo field in the open-water core of the Bay, avoiding land tiles.
-    lats = np.linspace(7, 21, 57)
-    lons = np.linspace(84, 98, 57)
+    # Dask remains the data-loading boundary; this grid is the cached demo output.
+    lats = np.linspace(LAT_MIN, LAT_MAX, 71)
+    lons = np.linspace(LON_MIN, LON_MAX, 111)
     points = [predict_profile(float(lat), float(lon), date_value) for lat in lats for lon in lons]
     index = int(np.where(DEPTHS == depth)[0][0])
     return {
         "date": date_value.isoformat(),
         "depth": depth,
-        "bounds": [[float(lats.min()), float(lons.min())], [float(lats.max()), float(lons.max())]],
+        "bounds": [[LAT_MIN, LON_MIN], [LAT_MAX, LON_MAX]],
         "points": [{"lat": p["lat"], "lon": p["lon"], "temperature": p["temperatures"][index]} for p in points],
         "min_temperature": min(p["temperatures"][index] for p in points),
         "max_temperature": max(p["temperatures"][index] for p in points),

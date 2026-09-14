@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from .data import DEPTHS
+from .data import DEPTHS, LAT_MAX, LAT_MIN, LON_MAX, LON_MIN
 from .model import heatmap, predict_profile
 from .agent import answer_query
 
@@ -13,8 +13,8 @@ app = FastAPI(title="OceanEmbed API", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 class PredictionRequest(BaseModel):
-    lat: float = Field(..., ge=5, le=23)
-    lon: float = Field(..., ge=80, le=100)
+    lat: float = Field(..., ge=LAT_MIN, le=LAT_MAX)
+    lon: float = Field(..., ge=LON_MIN, le=LON_MAX)
     date: date
 
 class AgentRequest(BaseModel):
@@ -22,7 +22,7 @@ class AgentRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "region": "Bay of Bengal"}
+    return {"status": "ok", "region": "Indian Ocean"}
 
 @app.post("/predict")
 def predict(request: PredictionRequest):
@@ -39,7 +39,7 @@ def get_heatmap(date: date = Query(...), depth: int = Query(..., ge=0, le=1000))
         raise HTTPException(status_code=422, detail=str(error)) from error
 
 @app.get("/export")
-def export_profile(lat: float = Query(..., ge=5, le=23), lon: float = Query(..., ge=80, le=100), date: date = Query(...)):
+def export_profile(lat: float = Query(..., ge=LAT_MIN, le=LAT_MAX), lon: float = Query(..., ge=LON_MIN, le=LON_MAX), date: date = Query(...)):
     try:
         profile = predict_profile(lat, lon, date)
     except ValueError as error:
