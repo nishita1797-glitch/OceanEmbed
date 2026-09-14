@@ -4,7 +4,7 @@ import os
 import re
 from datetime import date
 from urllib.request import Request, urlopen
-from .model import predict_profile, heatmap
+from .model import PARAMETERS, predict_profile, heatmap
 
 CITIES = {
     "mumbai": (19.08, 72.88), "chennai": (13.08, 80.27), "kolkata": (22.57, 88.36),
@@ -41,13 +41,17 @@ def answer_query(message: str) -> dict:
     depth_match = re.search(r"(\d{1,4})\s*m", text)
     depth = int(depth_match.group(1)) if depth_match else 200
     depth = min((0, 25, 50, 75, 100, 150, 200, 300, 400, 500, 600, 700, 800, 900, 1000), key=lambda item: abs(item - depth))
+    parameter = next((name for name in PARAMETERS if name in text or PARAMETERS[name]["label"].lower().split(" ")[0] in text), "temperature")
     point = next((coords for city, coords in CITIES.items() if city in text), (0.0, 80.0))
     if "warmest" in text or "where" in text:
-        grid = heatmap(date.today(), depth)
+        grid = heatmap(date.today(), depth, parameter)
         warmest = max(grid["points"], key=lambda item: item["temperature"])
         fallback = f"The warmest modeled point at {depth} m is {warmest['temperature']:.1f} C near {warmest['lat']:.2f}N, {warmest['lon']:.2f}E. This is OceanEmbed's synthetic demo output."
-        return {"answer": _llm_response(message, fallback) or fallback, "source": "OceanEmbed /heatmap", "query": {"depth": depth}}
-    profile = predict_profile(*point, date.today())
+        context = f" Origin: AI Predicted: Subsurface Inference; exact depth: {depth} m; latitude: {warmest['lat']:.2f}; longitude: {warmest['lon']:.2f}; parameter: {parameter}."
+        return {"answer": (_llm_response(message, fallback) or fallback) + context, "source": "OceanEmbed /heatmap", "query": {"depth": depth, "parameter": parameter, "origin": "AI Predicted: Subsurface Inference", "lat": warmest["lat"], "lon": warmest["lon"]}}
+    profile = predict_profile(*point, date.today(), parameter)
     index = profile["depths"].index(depth)
     fallback = f"At {depth} m near {point[0]:.2f}N, {point[1]:.2f}E, OceanEmbed predicts {profile['temperatures'][index]:.1f} C +/- {profile['uncertainties'][index]:.1f} C. The value is from the model endpoint, not the language model."
-    return {"answer": _llm_response(message, fallback) or fallback, "source": "OceanEmbed /predict", "query": {"lat": point[0], "lon": point[1], "depth": depth}}
+    origin = "Observed: Direct Satellite Measurement" if depth == 0 else "AI Predicted: Subsurface Inference (No Direct Satellite Line-of-Sight)"
+    context = f" Origin: {origin}; exact depth: {depth} m; latitude: {point[0]:.2f}; longitude: {point[1]:.2f}; parameter: {parameter}."
+    return {"answer": (_llm_response(message, fallback) or fallback) + context, "source": "OceanEmbed /predict", "query": {"lat": point[0], "lon": point[1], "depth": depth, "parameter": parameter, "origin": origin}}
