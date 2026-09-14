@@ -23,6 +23,18 @@ The first demo runs on deterministic synthetic observations so it is immediately
 
 For fast backend-only iteration: `cd backend && pip install -r requirements.txt && uvicorn app.main:app --reload`. For frontend-only iteration: `cd frontend && npm install && npm run dev`.
 
+## Deploy on Vercel
+
+Deploy this as two Vercel projects; the `services` JSON format is not supported for sibling Vite and FastAPI services.
+
+1. Import the repository twice in Vercel.
+2. Frontend project: set **Root Directory** to `frontend`. Vercel uses `frontend/vercel.json` and `npm run build` automatically.
+3. Backend project: set **Root Directory** to `backend`. Vercel uses `backend/api/index.py` and `backend/vercel.json` to serve FastAPI.
+4. In the frontend project environment variables, set `VITE_API_URL` to the deployed backend URL, for example `https://oceanembed-api.vercel.app`.
+5. Redeploy the frontend after setting the variable.
+
+The backend's `LLM_API_KEY` is optional for the current graceful fallback agent. `DATABASE_URL` can be set to an external PostgreSQL/PostGIS service when persistence is enabled.
+
 ## API
 
 - `POST /predict` with `{ "lat": 13.08, "lon": 80.27, "date": "2026-09-14" }` returns depths, temperatures, uncertainty, and variable attention weights.
