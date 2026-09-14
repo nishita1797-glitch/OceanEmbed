@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import Plot from 'react-plotly.js';
+import landData from './data/natural-earth-land.json';
 
 type HeatPoint = { lat: number; lon: number; temperature: number };
 type Heatmap = { points: HeatPoint[]; min_temperature: number; max_temperature: number; bounds: [[number, number], [number, number]] };
@@ -9,16 +10,25 @@ type OceanOverlay = L.Layer & { setHeatmap?: (value: Heatmap) => void };
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const DEPTHS = [0, 25, 50, 75, 100, 150, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
 const TODAY = new Date().toISOString().slice(0, 10);
+const MODEL_BOUNDS = { south: 5, west: 80, north: 23, east: 100 };
 
 function colorFor(value: number, min: number, max: number) { const ratio = Math.max(0, Math.min(1, (value - min) / Math.max(0.1, max - min))); const hue = 215 - ratio * 215; return `hsl(${hue}, 84%, ${47 + ratio * 5}%)`; }
 
-// A GeoJSON-like open-water mask keeps the synthetic field off the surrounding land.
-const BAY_OCEAN_GEOJSON = { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[80, 5], [100, 5], [100, 23], [95.2, 23], [93.7, 22.6], [92.2, 22.1], [91.2, 21.5], [90.2, 21.4], [89.4, 21.7], [88.3, 22.1], [87.2, 22.4], [86.2, 22.1], [85.2, 21.2], [84.2, 20], [83.3, 18.5], [82.4, 16.5], [81.4, 14], [80.6, 11], [80, 8], [80, 5]]] } };
-const BAY_OCEAN: [number, number][] = BAY_OCEAN_GEOJSON.geometry.coordinates[0].map(([lon, lat]) => [lat, lon] as [number, number]);
+type Ring = [number, number][];
+type LandGeometry = { type: 'Polygon' | 'MultiPolygon'; coordinates: Ring[] | Ring[][] };
+type LandFeature = { geometry: LandGeometry };
+const landFeatures = (landData as unknown as { features: LandFeature[] }).features;
+
+function validRing(ring: Ring) { if (ring.length < 4 || ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) return false; return ring.every(([lon, lat], index) => Number.isFinite(lon) && Number.isFinite(lat) && (index === 0 || lon !== ring[index - 1][0] || lat !== ring[index - 1][1])); }
+function ringsFor(feature: LandFeature) { return feature.geometry.type === 'Polygon' ? feature.geometry.coordinates as Ring[] : (feature.geometry.coordinates as Ring[][]).flat(); }
+const validLandRings = landFeatures.flatMap(ringsFor).filter(validRing);
+if (!validLandRings.length) throw new Error('Natural Earth land GeoJSON contains no valid closed rings');
+const regionalLandRings = validLandRings.filter((ring) => ring.some(([lon, lat]) => lat >= MODEL_BOUNDS.south - 1 && lat <= MODEL_BOUNDS.north + 1 && lon >= MODEL_BOUNDS.west - 1 && lon <= MODEL_BOUNDS.east + 1));
+function pointInRing(lat: number, lon: number, ring: Ring) { let inside = false; for (let index = 0, previous = ring.length - 1; index < ring.length; previous = index++) { const [lonA, latA] = ring[index]; const [lonB, latB] = ring[previous]; if ((latA > lat) !== (latB > lat) && lon < (lonB - lonA) * (lat - latA) / (latB - latA) + lonA) inside = !inside; } return inside; }
+function isOceanPoint(lat: number, lon: number) { return lat >= MODEL_BOUNDS.south && lat <= MODEL_BOUNDS.north && lon >= MODEL_BOUNDS.west && lon <= MODEL_BOUNDS.east && !regionalLandRings.some((ring) => pointInRing(lat, lon, ring)); }
 
 function hslToRgb(hue: number) { const saturation = 0.84; const lightness = 0.5; const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation; const x = chroma * (1 - Math.abs((hue / 60) % 2 - 1)); const match = lightness - chroma / 2; const rgb = hue < 60 ? [chroma, x, 0] : hue < 120 ? [x, chroma, 0] : hue < 180 ? [0, chroma, x] : hue < 240 ? [0, x, chroma] : hue < 300 ? [x, 0, chroma] : [chroma, 0, x]; return rgb.map((channel) => Math.round((channel + match) * 255)); }
 
-function isInsideBay(lat: number, lon: number) { let inside = false; for (let index = 0, previous = BAY_OCEAN.length - 1; index < BAY_OCEAN.length; previous = index++) { const [latA, lonA] = BAY_OCEAN[index] as [number, number]; const [latB, lonB] = BAY_OCEAN[previous] as [number, number]; if ((lonA > lon) !== (lonB > lon) && lat < (latB - latA) * (lon - lonA) / (lonB - lonA) + latA) inside = !inside; } return inside; }
 
 function createOceanOverlay(map: L.Map, onPointClick: (lat: number, lon: number) => void): OceanOverlay {
   const layer = new L.Layer() as OceanOverlay;
@@ -38,10 +48,10 @@ function createOceanOverlay(map: L.Map, onPointClick: (lat: number, lon: number)
       const tx = fx - ix; const ty = fy - iy; const value = (grid.get(`${lats[iy]}|${lons[ix]}`)! * (1 - tx) + grid.get(`${lats[iy]}|${lons[ix + 1]}`)! * tx) * (1 - ty) + (grid.get(`${lats[iy + 1]}|${lons[ix]}`)! * (1 - tx) + grid.get(`${lats[iy + 1]}|${lons[ix + 1]}`)! * tx) * ty; const rgb = hslToRgb(215 - Math.max(0, Math.min(1, (value - min) / Math.max(0.1, max - min))) * 215); const offset = (y * rasterWidth + x) * 4; pixels.data[offset] = rgb[0]; pixels.data[offset + 1] = rgb[1]; pixels.data[offset + 2] = rgb[2]; pixels.data[offset + 3] = 142;
     }
     const raster = document.createElement('canvas'); raster.width = rasterWidth; raster.height = rasterHeight; raster.getContext('2d')!.putImageData(pixels, 0, 0);
-    const southwest = map.latLngToContainerPoint([bounds[0][0], bounds[0][1]]); const northeast = map.latLngToContainerPoint([bounds[1][0], bounds[1][1]]); const clip = BAY_OCEAN.map(([lat, lon]) => map.latLngToContainerPoint([lat, lon]));
-    context.save(); context.beginPath(); clip.forEach((point, index) => index ? context.lineTo(point.x, point.y) : context.moveTo(point.x, point.y)); context.closePath(); context.clip(); context.imageSmoothingEnabled = true; context.globalAlpha = 0.72; context.drawImage(raster, southwest.x, northeast.y, northeast.x - southwest.x, southwest.y - northeast.y); context.restore();
+    const southwest = map.latLngToContainerPoint([bounds[0][0], bounds[0][1]]); const northeast = map.latLngToContainerPoint([bounds[1][0], bounds[1][1]]);
+    context.save(); context.beginPath(); context.rect(southwest.x, northeast.y, northeast.x - southwest.x, southwest.y - northeast.y); regionalLandRings.forEach((ring) => { const first = map.latLngToContainerPoint([ring[0][1], ring[0][0]]); context.moveTo(first.x, first.y); ring.slice(1).forEach(([lon, lat]) => { const point = map.latLngToContainerPoint([lat, lon]); context.lineTo(point.x, point.y); }); context.closePath(); }); context.clip('evenodd'); context.imageSmoothingEnabled = true; context.globalAlpha = 0.72; context.drawImage(raster, southwest.x, northeast.y, northeast.x - southwest.x, southwest.y - northeast.y); context.restore();
   };
-  layer.onAdd = () => { canvas = L.DomUtil.create('canvas', 'ocean-heatmap-canvas'); canvas.style.position = 'absolute'; canvas.style.left = '0'; canvas.style.top = '0'; canvas.style.pointerEvents = 'auto'; canvas.style.opacity = '0.9'; canvas.width = map.getSize().x; canvas.height = map.getSize().y; map.getPanes().overlayPane.appendChild(canvas); map.on('move zoom resize', draw); canvas.addEventListener('click', (event) => { const point = map.containerPointToLatLng([event.offsetX, event.offsetY]); if (isInsideBay(point.lat, point.lng)) onPointClick(point.lat, point.lng); }); draw(); return layer; };
+  layer.onAdd = () => { canvas = L.DomUtil.create('canvas', 'ocean-heatmap-canvas'); canvas.style.position = 'absolute'; canvas.style.left = '0'; canvas.style.top = '0'; canvas.style.pointerEvents = 'auto'; canvas.style.opacity = '0.9'; canvas.width = map.getSize().x; canvas.height = map.getSize().y; map.getPanes().overlayPane.appendChild(canvas); map.on('move zoom resize', draw); canvas.addEventListener('click', (event) => { const point = map.containerPointToLatLng([event.offsetX, event.offsetY]); if (isOceanPoint(point.lat, point.lng)) onPointClick(point.lat, point.lng); }); draw(); return layer; };
   layer.onRemove = () => { map.off('move zoom resize', draw); canvas?.remove(); return layer; };
   layer.setHeatmap = (value) => { current = value; draw(); };
   return layer;
@@ -51,7 +61,7 @@ export default function App() {
   const mapRef = useRef<HTMLDivElement>(null); const leafletRef = useRef<L.Map | null>(null); const layerRef = useRef<OceanOverlay | null>(null);
   const [depthIndex, setDepthIndex] = useState(0); const [selectedDate, setSelectedDate] = useState(TODAY); const [heatmap, setHeatmap] = useState<Heatmap | null>(null); const [profile, setProfile] = useState<Profile | null>(null); const [loading, setLoading] = useState(true); const [chatOpen, setChatOpen] = useState(false); const [question, setQuestion] = useState(''); const [messages, setMessages] = useState<string[]>(['Ask about temperature, depth, or the warmest region.']);
   const depth = DEPTHS[depthIndex];
-  useEffect(() => { if (!mapRef.current || leafletRef.current) return; const map = L.map(mapRef.current, { zoomControl: false, minZoom: 4, maxBounds: [[4, 79], [24, 101]] }); L.control.zoom({ position: 'bottomright' }).addTo(map); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', opacity: 0.72 }).addTo(map); map.createPane('landMask'); map.getPane('landMask')!.style.zIndex = '350'; L.polygon([[[5, 80], [5, 100], [23, 100], [23, 80]], BAY_OCEAN], { pane: 'landMask', stroke: false, fillColor: '#03090d', fillOpacity: 0.94, interactive: false }).addTo(map); map.fitBounds([[5, 80], [23, 100]], { padding: [12, 12] }); const overlay = createOceanOverlay(map, loadProfile); map.addLayer(overlay); layerRef.current = overlay; leafletRef.current = map; return () => { map.remove(); leafletRef.current = null; }; }, []);
+  useEffect(() => { if (!mapRef.current || leafletRef.current) return; const map = L.map(mapRef.current, { zoomControl: false, minZoom: 4, maxBounds: [[4, 79], [24, 101]] }); L.control.zoom({ position: 'bottomright' }).addTo(map); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors', opacity: 0.72 }).addTo(map); map.fitBounds([[MODEL_BOUNDS.south, MODEL_BOUNDS.west], [MODEL_BOUNDS.north, MODEL_BOUNDS.east]], { padding: [12, 12] }); const overlay = createOceanOverlay(map, loadProfile); map.addLayer(overlay); layerRef.current = overlay; leafletRef.current = map; return () => { map.remove(); leafletRef.current = null; }; }, []);
   useEffect(() => { let active = true; setLoading(true); fetch(`${API}/heatmap?date=${selectedDate}&depth=${depth}`).then((response) => response.json()).then((data) => { if (active) setHeatmap(data); }).finally(() => active && setLoading(false)); return () => { active = false; }; }, [selectedDate, depth]);
   useEffect(() => { if (heatmap) layerRef.current?.setHeatmap?.(heatmap); }, [heatmap]);
   async function loadProfile(lat: number, lon: number) { const response = await fetch(`${API}/predict`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lat, lon, date: selectedDate }) }); setProfile(await response.json()); }
